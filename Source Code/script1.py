@@ -1215,7 +1215,7 @@ df.head()
 df_dates = pd.read_csv("haunted_places_with_dates.csv", sep=",")
 df_dates.head()
 
-date_merge_df = df.join(df_dates[['description', 'Haunted Places Date']], on='description')
+df = df.merge(df_dates[['description', 'Haunted Places Date']], on='description', how='left')
 df.head()
 
 """# Merging Provided Datasets
@@ -1489,10 +1489,10 @@ def process_haunted_places_timeanddate_df(df, cache_file="timeanddate_cache.pkl"
 df = process_haunted_places_timeanddate_df(df)
 df.head()
 
-df_timeanddate = pd.read_csv("haunted_places_timeanddate.csv", sep=",")
+df_timeanddate = pd.read_csv("finalized_df_text_adding_timeanddate.csv", sep=",")
 df_timeanddate.head()
 
-df = df.merge(df_timeanddate, on='description', how='left')
+df = df.merge(df_timeanddate[['description','Daylight Data TimeandDate']], on='description', how='left')
 df.head()
 
 """# 3 MIME Type Datasets
@@ -1597,7 +1597,7 @@ print(sorted_by_apparition_propertycrime.head(10))
 
 merged_fbi_df = pd.merge(agg_df_by_state, agg_fbi_df, left_on='state_abbrev', right_on = 'State', how = 'left')
 
-select_cols_fbi_df = merged_fbi_df[['state_abbrev', 'FBI.Population.Covered', 'Murder per capita', 'Violent Crime per capita']]
+select_cols_fbi_df = merged_fbi_df[['state_abbrev', 'FBI.Population.Covered', 'Murder per capita', 'Violent Crime per capita', 'Property Crime per capita']]
 
 # Merge the aggregated ratios and calculations back into the original DataFrame to prepare it for Tika Similarity
 df_merged_with_fbi = pd.merge(df, select_cols_fbi_df, on='state_abbrev', how='left')
@@ -1702,7 +1702,7 @@ def join(df: pd.DataFrame, json_path: str) -> pd.DataFrame:
         new_col_dict[new_col] = list()
 
     for index, row in df.iterrows():
-        state = row.state
+        state = row['State']
         for col in new_col_names: # death_rate_{cause}
             if state == 'Washington DC':
                 new_col_dict[col].append(None)
@@ -1757,30 +1757,57 @@ final_df.to_csv(csv_filename, index=True)
 
 display(DataTable(final_df))
 
+df.columns
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+import numpy as np
 
-# Ensure 'correlations' exists by recalculating it if needed
-if 'correlations' not in globals():
-    correlations = {}
-    death_cause_columns = [col for col in final_df.columns if "death_rate" in col.lower()]
-    for col in death_cause_columns:
-        correlation = np.corrcoef(final_df[col], final_df["haunted_encounter_count"])[0, 1]
-        correlations[col] = correlation
+# Create a copy of df to avoid modifying original data
+df_copy = df.copy()
 
-# Create a folder to save plots
+# Normalize column names
+df_copy.columns = df_copy.columns.str.lower().str.strip()
+
+# Count the number of haunted encounters per state
+haunted_counts_by_state = df_copy["state"].value_counts().rename("haunted_encounter_count")
+
+death_cause_columns = [col for col in df_copy.columns if "death_rate" in col.lower()]
+
+# Compute the mean values for each state for death rate columns
+state_aggregated_data = df_copy.groupby("state")[death_cause_columns].mean(numeric_only=True)
+
+# Merge haunted counts with death rate columns
+final_df = haunted_counts_by_state.to_frame().merge(state_aggregated_data, left_index=True, right_index=True)
+
+# Save the processed dataset
+csv_filename = "states_death_rates.csv"
+final_df.to_csv(csv_filename, index=True)
+print(f"Data saved to: {csv_filename}")
+
+
+display(DataTable(final_df))
+
+correlations = {}
+for col in death_cause_columns:
+    correlation = np.corrcoef(final_df[col], final_df["haunted_encounter_count"])[0, 1]
+    correlations[col] = correlation
+
+print("\nCorrelation values between hauntings and death rates:")
+for col, value in correlations.items():
+    print(f"{col}: {value:.2f}")
+
 output_folder = "death_rates_scatter_plots"
 os.makedirs(output_folder, exist_ok=True)
 
-for i, col in enumerate(death_cause_columns):
+for col in death_cause_columns:
     plt.figure(figsize=(8, 6))
     sns.scatterplot(x=final_df[col], y=final_df["haunted_encounter_count"])
-    plt.title(f"Ghost Sightings vs {col} (Corr: {correlations[col]:.2f})")
+    plt.title(f"Hauntings vs {col} (Corr: {correlations[col]:.2f})")
     plt.xlabel(col)
     plt.ylabel("Number of Haunted Encounters")
 
-    # Save each individual plot
     plot_filename = f"{output_folder}/scatter_{col}.png"
     plt.savefig(plot_filename)
     print(f"Saved: {plot_filename}")
@@ -1796,6 +1823,7 @@ Original Idea using computer vision library to read jpeg files and obtain result
 
 # THIS CODE yields very poor results :(
 import cv2
+!pip install pytesseract
 import pytesseract
 import re
 import matplotlib.pyplot as plt
