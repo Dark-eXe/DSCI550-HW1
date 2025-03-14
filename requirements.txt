@@ -1,11 +1,7 @@
 # The following packages and libraries are needed to sucessfully process the datasets
 bs4
-collections
-concurrent.futures
 datetime
-dateutil
 gensim
-google-colab
 nltk
 number-parser
 tqdm
